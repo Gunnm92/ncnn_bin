@@ -21,6 +21,13 @@ Options::Mode parse_mode(const std::string& value) {
     }
     return Options::Mode::File;
 }
+
+Options::Protocol parse_protocol(const std::string& value) {
+    if (value == "v2") {
+        return Options::Protocol::V2;
+    }
+    return Options::Protocol::V1;
+}
 } // namespace
 
 bool parse_options(int argc, char** argv, Options& opts) {
@@ -44,6 +51,7 @@ bool parse_options(int argc, char** argv, Options& opts) {
             ("batch-size", "Enable batch stdin mode (protocol v1)", cxxopts::value<int>()->default_value("0"))
             ("keep-alive", "Keep process alive for multiple invocations",
                 cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+            ("protocol", "Streaming protocol (v1|v2)", cxxopts::value<std::string>()->default_value("v1"))
             ("profiling", "Emit per-image profiling metrics",
                 cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
             ("verbose", "Verbose logging",
@@ -71,8 +79,14 @@ bool parse_options(int argc, char** argv, Options& opts) {
         opts.max_batch_items = result["max-batch-items"].as<int>();
         opts.batch_size = result["batch-size"].as<int>();
         opts.keep_alive = result["keep-alive"].as<bool>();
+        opts.protocol = parse_protocol(result["protocol"].as<std::string>());
         opts.profiling = result["profiling"].as<bool>();
         opts.verbose = result["verbose"].as<bool>();
+
+        const bool protocol_explicit = result.count("protocol") > 0;
+        if (opts.keep_alive && !protocol_explicit) {
+            opts.protocol = Options::Protocol::V2;
+        }
 
         return true;
     } catch (const cxxopts::exceptions::exception& ex) {

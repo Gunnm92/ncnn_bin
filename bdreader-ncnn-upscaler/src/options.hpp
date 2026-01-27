@@ -5,6 +5,7 @@
 struct Options {
     enum class EngineType { RealCUGAN, RealESRGAN };
     enum class Mode { File, Stdin, Batch };
+    enum class Protocol { V1, V2 };
 
     EngineType engine = EngineType::RealCUGAN;
     Mode mode = Mode::File;
@@ -23,6 +24,7 @@ struct Options {
     bool verbose = false;
     bool keep_alive = false;
     bool profiling = false;
+    Protocol protocol = Protocol::V1;
 };
 
 bool parse_options(int argc, char** argv, Options& opts);
