@@ -1,0 +1,33 @@
+# Build artifacts
+/build/
+/build_asan/
+build_asan_output.log
+
+# bdreader build outputs
+bdreader-ncnn-upscaler/build-asan/
+bdreader-ncnn-upscaler/build-release/
+bdreader-ncnn-upscaler/build/
+bdreader-ncnn-upscaler/cmake_install.cmake
+
+# Backend binaries
+backend/bin/
+backend/build/
+
+# Intermediate/test outputs
+/results/
+/img_test/
+/test_output*/
+
+# Source code
+/ncnn/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
