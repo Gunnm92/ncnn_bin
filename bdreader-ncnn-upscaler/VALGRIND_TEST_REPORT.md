@@ -16,12 +16,12 @@
 ### 1. Tests Fonctionnels
 
 #### Test 1 : Single Image RealCUGAN
-- **Commande** : `valgrind --leak-check=full ./build/bdreader-ncnn-upscaler --input img_test/006f.jpg --output test_output/test_valgrind_006f.webp --engine realcugan --scale 2 --quality E --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se`
+- **Commande** : `valgrind --leak-check=full ./build/bdreader-ncnn-upscaler --input img_test/006f.jpg --output test_output/test_valgrind_006f.webp --engine realcugan --scale 2 --quality E --model /config/workspace/BDReader-Rust/models/realcugan/models-se`
 - **Résultat** : ✅ Succès
 - **Logs** : "RealCUGAN engine cleanup complete" confirmé
 
 #### Test 2 : Single Image RealESRGAN
-- **Commande** : `valgrind --leak-check=full ./build/bdreader-ncnn-upscaler --input img_test/007f.jpg --output test_output/test_valgrind_007f.webp --engine realesrgan --scale 2 --model /config/workspace/BDReader-Rust/backend/models/realesrgan`
+- **Commande** : `valgrind --leak-check=full ./build/bdreader-ncnn-upscaler --input img_test/007f.jpg --output test_output/test_valgrind_007f.webp --engine realesrgan --scale 2 --model /config/workspace/BDReader-Rust/models/realesrgan`
 - **Résultat** : ✅ Succès
 - **Logs** : "RealESRGAN engine cleanup complete" confirmé
 
@@ -166,7 +166,7 @@ valgrind --leak-check=full --show-leak-kinds=all \
   --input img_test/006f.jpg \
   --output test_output/test.webp \
   --engine realcugan --scale 2 --quality E \
-  --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+  --model /config/workspace/BDReader-Rust/models/realcugan/models-se
 
 # Test avec log détaillé
 valgrind --leak-check=full --show-leak-kinds=all \
@@ -175,7 +175,7 @@ valgrind --leak-check=full --show-leak-kinds=all \
   --input img_test/006f.jpg \
   --output test_output/test.webp \
   --engine realcugan --scale 2 --quality E \
-  --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+  --model /config/workspace/BDReader-Rust/models/realcugan/models-se
 ```
 
 ### Analyse des Logs

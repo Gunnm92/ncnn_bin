@@ -14,6 +14,7 @@ constexpr uint8_t kProtocolVersion = 2;
 constexpr size_t kProtocolHeaderSize = 4 + 1 + 1 + 4;
 constexpr size_t kMaxMetaStringBytes = 64;
 constexpr uint32_t kMaxImageSizeBytes = 50u * 1024u * 1024u;
+constexpr size_t kMaxBatchPayloadBytes = 48u * 1024u * 1024u;
 
 enum class ProtocolMessageType : uint8_t {
     Request = 1,
@@ -25,6 +26,8 @@ enum class ProtocolStatus : uint32_t {
     InvalidFrame = 1,
     ValidationError = 2,
     EngineError = 3,
+    ResourceLimit = 4,
+    Timeout = 5,
 };
 
 struct ProtocolHeader {
@@ -90,6 +93,11 @@ inline bool parse_protocol_header(const uint8_t* payload,
         error = "unsupported protocol version " + std::to_string(header.version);
         return false;
     }
+    if (header.msg_type != static_cast<uint8_t>(ProtocolMessageType::Request) &&
+        header.msg_type != static_cast<uint8_t>(ProtocolMessageType::Response)) {
+        error = "unsupported msg_type " + std::to_string(header.msg_type);
+        return false;
+    }
 
     return true;
 }
@@ -98,9 +106,11 @@ inline bool parse_request_payload(const uint8_t* data,
                                   size_t size,
                                   size_t max_batch_items,
                                   RequestPayload& request,
-                                  std::string& error) {
+                                  std::string& error,
+                                  ProtocolStatus& status) {
     const uint8_t* ptr = data;
     size_t remaining = size;
+    status = ProtocolStatus::ValidationError;
 
     if (remaining < 1) {
         error = "missing engine enum";
@@ -154,14 +164,22 @@ inline bool parse_request_payload(const uint8_t* data,
 
     request.images.clear();
     request.images.reserve(request.batch_count);
+    size_t total_image_bytes = 0;
     for (uint32_t i = 0; i < request.batch_count; ++i) {
         uint32_t image_len = 0;
         if (!read_le_u32(ptr, remaining, image_len)) {
             error = "missing image length for entry " + std::to_string(i);
             return false;
         }
+        total_image_bytes += image_len;
+        if (total_image_bytes > kMaxBatchPayloadBytes) {
+            status = ProtocolStatus::ResourceLimit;
+            error = "batch payload exceeds memory budget";
+            return false;
+        }
         if (image_len > kMaxImageSizeBytes) {
             error = "image size exceeds limit: " + std::to_string(image_len);
+            status = ProtocolStatus::ResourceLimit;
             return false;
         }
         if (image_len > remaining) {

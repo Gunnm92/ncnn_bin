@@ -13,6 +13,7 @@ PNG_PIX = base64.b64decode(
 K_MAGIC = 0x42524452
 K_VERSION = 2
 MSG_TYPE_REQUEST = 1
+MSG_TYPE_RESPONSE = 2
 
 
 def build_request(request_id, engine, meta, gpu_id, batch_count, images):
@@ -28,6 +29,13 @@ def build_request(request_id, engine, meta, gpu_id, batch_count, images):
         payload.extend(image)
     frame = struct.pack("<I", len(header) + len(payload)) + header + payload
     return frame
+
+
+def build_frame_with_msg_type(request_id, msg_type):
+    header = struct.pack("<IBBI", K_MAGIC, K_VERSION, msg_type, request_id)
+    payload = bytearray()
+    payload.extend(struct.pack("<I", 0))
+    return struct.pack("<I", len(header)) + header + payload
 
 
 def parse_response(data):
@@ -62,8 +70,6 @@ def main():
         "--mode",
         "stdin",
         "--keep-alive",
-        "--protocol",
-        "v2",
         "--gpu-id",
         args.gpu_id,
     ]
@@ -91,6 +97,25 @@ def main():
             raise RuntimeError(f"non-zero status: {status}")
         if len(outputs) != len(images):
             raise RuntimeError("result_count mismatch")
+        if request_id_out != request_id:
+            raise RuntimeError("response request_id mismatch")
+        print("  ✅ request_id echoed correctly")
+
+        # Ensure we reject non-request msg_type headers (response frames)
+        response_frame = build_frame_with_msg_type(77, MSG_TYPE_RESPONSE)
+        proc.stdin.write(response_frame)
+        proc.stdin.flush()
+        resp_len_bytes = proc.stdout.read(4)
+        if len(resp_len_bytes) < 4:
+            raise RuntimeError("no response for msg_type test")
+        resp_len = struct.unpack("<I", resp_len_bytes)[0]
+        payload = proc.stdout.read(resp_len)
+        request_id_rt, status_rt, error_rt, outputs_rt = parse_response(payload)
+        print(f"msg_type test request_id={request_id_rt} status={status_rt} error={error_rt}")
+        if request_id_rt != 77:
+            raise RuntimeError("msg_type rejection returned wrong request_id")
+        if status_rt == 0:
+            raise RuntimeError("msg_type rejection should not succeed")
     finally:
         proc.stdin.write(struct.pack("<I", 0))
         proc.stdin.flush()

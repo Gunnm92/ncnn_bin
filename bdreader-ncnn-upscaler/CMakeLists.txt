@@ -30,6 +30,7 @@ file(GLOB_RECURSE BDREADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
 )
+list(FILTER BDREADER_SOURCES EXCLUDE REGEX ".*protocol_request_payload_test\\.cpp$")
 
 add_executable(bdreader-ncnn-upscaler ${BDREADER_SOURCES})
 

@@ -4,8 +4,7 @@
 
 struct Options {
     enum class EngineType { RealCUGAN, RealESRGAN };
-    enum class Mode { File, Stdin, Batch };
-    enum class Protocol { V1, V2 };
+    enum class Mode { File, Stdin };
 
     EngineType engine = EngineType::RealCUGAN;
     Mode mode = Mode::File;
@@ -15,16 +14,15 @@ struct Options {
     int scale = 2;
     int noise_level = -1;
     std::string quality = "E";
-    std::string model = "backend/models/realcugan/models-se";
+    std::string model = "models/realcugan/models-se";
     std::string model_name = "";  // Empty by default, will use scale factor to select model
     std::string input_path;
     std::string output_path;
     std::string output_format = "webp";
-    int batch_size = 0;  // 0 = disabled, >0 = enable batch stdin mode
     bool verbose = false;
     bool keep_alive = false;
     bool profiling = false;
-    Protocol protocol = Protocol::V1;
+    bool log_protocol = false;
 };
 
 bool parse_options(int argc, char** argv, Options& opts);

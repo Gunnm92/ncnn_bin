@@ -48,7 +48,8 @@ int main() {
     auto valid_payload = build_payload(0, "E", -1, 2, images);
     RequestPayload request;
     std::string error;
-    if (!parse_request_payload(valid_payload.data(), valid_payload.size(), 8, request, error)) {
+    ProtocolStatus status = ProtocolStatus::ValidationError;
+    if (!parse_request_payload(valid_payload.data(), valid_payload.size(), 8, request, error, status)) {
         std::cerr << "Valid request rejected: " << error << "\n";
         return 1;
     }
@@ -58,12 +59,26 @@ int main() {
     }
 
     auto overflow_payload = build_payload(0, "E", 0, 9, images);
-    if (parse_request_payload(overflow_payload.data(), overflow_payload.size(), 8, request, error)) {
+    if (parse_request_payload(overflow_payload.data(), overflow_payload.size(), 8, request, error, status)) {
         std::cerr << "Overflow batch_count accepted\n";
         return 1;
     }
     if (error.find("batch_count") == std::string::npos) {
         std::cerr << "Error text missing for overflow case\n";
+        return 1;
+    }
+    if (status != ProtocolStatus::ValidationError) {
+        std::cerr << "Incorrect status for batch_count overflow\n";
+        return 1;
+    }
+
+    auto memory_payload = build_payload(0, "E", 0, 2, {std::vector<uint8_t>(30 * 1024 * 1024, 0), std::vector<uint8_t>(30 * 1024 * 1024, 0)});
+    if (parse_request_payload(memory_payload.data(), memory_payload.size(), 8, request, error, status)) {
+        std::cerr << "Memory payload accepted\n";
+        return 1;
+    }
+    if (status != ProtocolStatus::ResourceLimit) {
+        std::cerr << "Expected ResourceLimit status for oversized batch bytes\n";
         return 1;
     }
 

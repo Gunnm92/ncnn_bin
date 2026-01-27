@@ -89,8 +89,8 @@
 ### Problème Rencontré
 
 Les modèles NCNN ne sont pas présents dans le répertoire par défaut :
-- `backend/models/realcugan/models-se/` : Non trouvé
-- `backend/models/realesrgan/` : Non trouvé
+- `models/realcugan/models-se/` : Non trouvé
+- `models/realesrgan/` : Non trouvé
 
 **Impact** : Les tests fonctionnels complets nécessitent les modèles téléchargés.
 
@@ -104,9 +104,9 @@ Les modèles NCNN ne sont pas présents dans le répertoire par défaut :
 
 **Exemple de sortie** :
 ```
-[WARN] RealCUGAN model directory not found: backend/models/realcugan/models-se
+[WARN] RealCUGAN model directory not found: models/realcugan/models-se
 [WARN] Specified RealCUGAN model missing, falling back to up2x-conservative
-[ERROR] RealCUGAN fallback model missing: backend/models/realcugan/models-se/up2x-conservative.param
+[ERROR] RealCUGAN fallback model missing: models/realcugan/models-se/up2x-conservative.param
 [ERROR] Failed to initialize engine
 ```
 

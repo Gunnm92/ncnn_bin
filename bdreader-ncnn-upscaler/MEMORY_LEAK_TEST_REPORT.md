@@ -16,12 +16,12 @@
 ### 1. Tests Fonctionnels
 
 #### Test 1 : Single Image RealCUGAN
-- **Commande** : `./bdreader-ncnn-upscaler --input img_test/006f.jpg --output test_output_asan/test_006f_asan.webp --engine realcugan --scale 2 --quality E --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se`
+- **Commande** : `./bdreader-ncnn-upscaler --input img_test/006f.jpg --output test_output_asan/test_006f_asan.webp --engine realcugan --scale 2 --quality E --model /config/workspace/BDReader-Rust/models/realcugan/models-se`
 - **Résultat** : ✅ Succès
 - **Logs** : "RealCUGAN engine cleanup complete" confirmé
 
 #### Test 2 : Single Image RealESRGAN
-- **Commande** : `./bdreader-ncnn-upscaler --input img_test/007f.jpg --output test_output_asan/test_007f_asan.webp --engine realesrgan --scale 2 --model /config/workspace/BDReader-Rust/backend/models/realesrgan`
+- **Commande** : `./bdreader-ncnn-upscaler --input img_test/007f.jpg --output test_output_asan/test_007f_asan.webp --engine realesrgan --scale 2 --model /config/workspace/BDReader-Rust/models/realesrgan`
 - **Résultat** : ✅ Succès
 - **Logs** : "RealESRGAN engine cleanup complete" confirmé
 
@@ -213,7 +213,7 @@ ASAN_OPTIONS=detect_leaks=1:halt_on_error=0:abort_on_error=0:print_stats=1 \
   --engine realcugan \
   --scale 2 \
   --quality E \
-  --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+  --model /config/workspace/BDReader-Rust/models/realcugan/models-se
 ```
 
 ### Test Batch
@@ -224,7 +224,7 @@ for img in 008f 009f 010f P00003 P00004; do
     --input img_test/${img}.jpg \
     --output test_output/test_${img}.webp \
     --engine realcugan --scale 2 --quality E \
-    --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+    --model /config/workspace/BDReader-Rust/models/realcugan/models-se
 done
 ```
 
@@ -237,7 +237,7 @@ valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes \
   --input img_test/006f.jpg \
   --output test_output/test.webp \
   --engine realcugan --scale 2 --quality E \
-  --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+  --model /config/workspace/BDReader-Rust/models/realcugan/models-se
 
 # Analyser les fuites
 grep -A 10 "LEAK SUMMARY" /tmp/valgrind.log

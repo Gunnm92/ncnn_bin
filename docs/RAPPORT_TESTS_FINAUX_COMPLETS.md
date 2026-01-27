@@ -17,7 +17,7 @@
   --engine realcugan \
   --scale 2 \
   --quality E \
-  --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+  --model /config/workspace/ncnn_bin/models/realcugan/models-se
 ```
 
 **Résultat** : ✅ **SUCCÈS**
@@ -41,7 +41,7 @@
   --output test_output/test_007f_realesrgan.webp \
   --engine realesrgan \
   --scale 2 \
-  --model /config/workspace/BDReader-Rust/backend/models/realesrgan
+  --model /config/workspace/ncnn_bin/models/realesrgan
 ```
 
 **Résultat** : ✅ **SUCCÈS**
@@ -71,7 +71,7 @@ for img in 008f 009f 010f; do
     --engine realcugan \
     --scale 2 \
     --quality E \
-    --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+    --model /config/workspace/ncnn_bin/models/realcugan/models-se
 done
 ```
 
@@ -102,7 +102,7 @@ done
   --engine realcugan \
   --scale 4 \
   --quality E \
-  --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+  --model /config/workspace/ncnn_bin/models/realcugan/models-se
 ```
 
 **Résultat** : ✅ **SUCCÈS**
@@ -136,7 +136,7 @@ done
    --engine realcugan \
    --scale 2 \
    --quality E \
-   --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+   --model /config/workspace/ncnn_bin/models/realcugan/models-se
 ```
 
 **Résultat** : ✅ **SUCCÈS**
@@ -217,7 +217,7 @@ valgrind --leak-check=full --show-leak-kinds=all \
   --output test_output/test.webp \
   --engine realcugan \
   --scale 2 \
-  --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+  --model /config/workspace/ncnn_bin/models/realcugan/models-se
 
 # AddressSanitizer
 cmake -DCMAKE_CXX_FLAGS="-fsanitize=address -g" ..
@@ -235,7 +235,7 @@ for i in {1..50}; do
     --output test_output/out_$i.webp \
     --engine realcugan \
     --scale 2 \
-    --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+    --model /config/workspace/ncnn_bin/models/realcugan/models-se
 done
 
 # Monitorer la mémoire
@@ -256,7 +256,7 @@ for i in {1..20}; do
     --engine realcugan \
     --scale 2 \
     --gpu-id 0 \
-    --model /config/workspace/BDReader-Rust/backend/models/realcugan/models-se
+    --model /config/workspace/ncnn_bin/models/realcugan/models-se
 done
 ```
 

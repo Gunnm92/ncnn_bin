@@ -15,7 +15,7 @@ python3 ncnn_bin/test_all_models.py
 
 ### Ce que fait le script
 
-1. **Découverte automatique** : Trouve tous les modèles RealCUGAN et RealESRGAN dans `backend/models/`
+1. **Découverte automatique** : Trouve tous les modèles RealCUGAN et RealESRGAN dans `models/`
 2. **Tests individuels** : Teste chaque modèle avec 5 images de test
 3. **Tests batch** : Teste le traitement par batch de 5 images
 4. **Métriques** : Mesure les temps CPU/GPU pour chaque image et le batch
@@ -101,7 +101,7 @@ Le rapport généré contient :
 ## Notes Techniques
 
 - **Temps CPU vs GPU** : Actuellement, le binaire ne sort pas de métriques JSON détaillées avec `--profiling`, donc le temps total est utilisé comme approximation pour CPU et GPU.
-- **Mode batch** : Le script simule le batch en faisant plusieurs appels séquentiels. Pour un vrai test batch avec protocole binaire, il faudrait implémenter le protocole décrit dans `NCNN_STDIN_STDOUT_SPEC.md`.
+-- Le driver de tests se contente désormais de `--mode stdin --keep-alive` et vérifie la trame `BRDR` version 2. Les anciens tests `--batch-size`/`--mode batch` ont été retirés.
 - **Timeout** : Chaque image a un timeout de 120 secondes pour éviter les blocages.
 
 ## Dépannage
@@ -132,5 +132,5 @@ Certains modèles peuvent être plus lents. Augmentez le timeout dans le script 
 ## Tests du protocole v2 keep-alive
 
 - **Unité** : `protocol_request_payload_test` (CMake target) vérifie le parsing `BRDR`/meta/batch_count/images` et rejette un `batch_count` > `--max-batch-items`. Il se compile avec `cmake --build build --target protocol_request_payload_test` puis `ctest -R protocol_request_payload_test`.  
-- **Intégration** : `tests/protocol_v2_integration.py` construit un message encodé, lance `bdreader-ncnn-upscaler --mode stdin --keep-alive --protocol v2`, envoie deux images encodées et valide que la réponse contient `status_code == 0`, un `result_count` égal au batch demandé et deux sorties. Lancer avec `python3 tests/protocol_v2_integration.py --binary /chemin/binaire`.
+- **Intégration** : `tests/protocol_v2_integration.py` construit un message encodé, lance `bdreader-ncnn-upscaler --mode stdin --keep-alive`, envoie deux images encodées et valide que la réponse contient `status_code == 0`, un `result_count` égal au batch demandé et deux sorties. Lancer avec `python3 tests/protocol_v2_integration.py --binary /chemin/binaire`.
 - **Stress keep-alive** : `tests/protocol_v2_keepalive.py` ouvre un seul process, envoie 10 requêtes successives, injecte une trame invalide et vérifie que la suivante réussit toujours, puis termine proprement. Lancer avec `python3 tests/protocol_v2_keepalive.py --binary ./build/bdreader-ncnn-upscaler`.

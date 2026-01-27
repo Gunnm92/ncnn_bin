@@ -63,8 +63,6 @@ def main():
         "--mode",
         "stdin",
         "--keep-alive",
-        "--protocol",
-        "v2",
         "--gpu-id",
         args.gpu_id,
         "--log-protocol",

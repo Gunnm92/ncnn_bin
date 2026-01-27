@@ -229,22 +229,22 @@ Toutes les images produites ont:
 
 ```bash
 # RealCUGAN Balanced (recommandé)
-./backend/bin/bdreader-ncnn-upscaler \
+./bdreader-ncnn-upscaler/build-release/bdreader-ncnn-upscaler \
   --engine realcugan \
   --quality E \
   --input page.jpg \
   --output result.webp \
   --gpu-id 0 \
-  --model backend/models/realcugan/models-se
+  --model models/realcugan/models-se
 
 # RealESRGAN 4x
-./backend/bin/bdreader-ncnn-upscaler \
+./bdreader-ncnn-upscaler/build-release/bdreader-ncnn-upscaler \
   --engine realesrgan \
   --scale 4 \
   --input page.jpg \
   --output result.webp \
   --gpu-id 0 \
-  --model backend/models/realesrgan
+  --model models/realesrgan
 ```
 
 ### API Rust

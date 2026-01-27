@@ -44,7 +44,8 @@
 - L'aide s'affiche sans erreur
 - Toutes les options sont disponibles :
   - `--engine` (realcugan|realesrgan)
-  - `--mode` (file|stdin|batch)
+  - `--mode` (file|stdin)
+  - `--keep-alive` (active le protocole encadré BRDR v2)
   - `--input`, `--output`
   - `--gpu-id`, `--scale`, `--quality`, etc.
 
@@ -92,12 +93,9 @@
      --scale 2
    ```
 
-2. **Test batch stdin** :
+2. **Test keep-alive protocole v2** :
    ```bash
-   # Créer un batch de test
-   echo -n -e "\x04\x00\x00\x00" > batch.bin  # 4 images
-   # ... ajouter images ...
-   ./build/bdreader-ncnn-upscaler --mode stdin --batch-size 4 < batch.bin
+   python3 tests/protocol_v2_integration.py --binary ./build/bdreader-ncnn-upscaler
    ```
 
 3. **Test tiling** :

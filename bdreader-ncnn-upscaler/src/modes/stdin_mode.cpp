@@ -413,7 +413,10 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
                               ProtocolStatus status,
                               const std::string& error_message,
                               size_t result_count,
-                              const std::chrono::steady_clock::time_point& start) {
+                              const std::chrono::steady_clock::time_point& start,
+                              size_t bytes_in,
+                              size_t bytes_out,
+                              const RequestPayload* request_info) {
         const auto elapsed_ns =
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
         metrics.total_ns.fetch_add(elapsed_ns, std::memory_order_relaxed);
@@ -431,6 +434,30 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
                 << " results=" << result_count;
             if (!error_message.empty()) {
                 oss << " error='" << error_message << "'";
+            }
+            logger::info(oss.str());
+        }
+
+        if (opts.profiling) {
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(2);
+            oss << "Profiling request_id=" << request_id
+                << " status=" << static_cast<uint32_t>(status);
+            if (request_info) {
+                const auto engine_name = (request_info->engine == Options::EngineType::RealESRGAN)
+                                             ? "RealESRGAN"
+                                             : "RealCUGAN";
+                oss << " engine=" << engine_name
+                    << " quality_or_scale='" << request_info->quality_or_scale << "'"
+                    << " gpu_id=" << request_info->gpu_id
+                    << " batch_count=" << request_info->batch_count;
+            }
+            oss << " results=" << result_count
+                << " bytes_in=" << bytes_in
+                << " bytes_out=" << bytes_out
+                << " elapsed_ms=" << (elapsed_ns / 1e6);
+            if (!error_message.empty()) {
+                oss << " error_len=" << error_message.size() << " error='" << error_message << "'";
             }
             logger::info(oss.str());
         }
@@ -457,7 +484,14 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
                 break;
             }
             write_protocol_error(std::cout, 0, ProtocolStatus::InvalidFrame, "frame too short for header");
-            record_outcome(0, ProtocolStatus::InvalidFrame, "frame too short for header", 0, frame_start);
+            record_outcome(0,
+                           ProtocolStatus::InvalidFrame,
+                           "frame too short for header",
+                           0,
+                           frame_start,
+                           message_len,
+                           0,
+                           nullptr);
             continue;
         }
 
@@ -468,7 +502,14 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
                 break;
             }
             write_protocol_error(std::cout, 0, ProtocolStatus::InvalidFrame, "frame exceeds max size");
-            record_outcome(0, ProtocolStatus::InvalidFrame, "frame exceeds max size", 0, frame_start);
+            record_outcome(0,
+                           ProtocolStatus::InvalidFrame,
+                           "frame exceeds max size",
+                           0,
+                           frame_start,
+                           message_len,
+                           0,
+                           nullptr);
             continue;
         }
 
@@ -483,7 +524,14 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
         if (!parse_protocol_header(payload.data(), payload.size(), header, header_error)) {
             logger::error("Protocol header validation failed: " + header_error);
             write_protocol_error(std::cout, 0, ProtocolStatus::ValidationError, header_error);
-            record_outcome(0, ProtocolStatus::ValidationError, header_error, 0, frame_start);
+            record_outcome(0,
+                           ProtocolStatus::ValidationError,
+                           header_error,
+                           0,
+                           frame_start,
+                           message_len,
+                           0,
+                           nullptr);
             continue;
         }
 
@@ -492,7 +540,14 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
             logger::error("Protocol v2 message_type=" + std::to_string(header.msg_type) +
                           " not supported; only request frames are allowed");
             write_protocol_error(std::cout, header.request_id, ProtocolStatus::ValidationError, message);
-            record_outcome(header.request_id, ProtocolStatus::ValidationError, message, 0, frame_start);
+            record_outcome(header.request_id,
+                           ProtocolStatus::ValidationError,
+                           message,
+                           0,
+                           frame_start,
+                           message_len,
+                           0,
+                           nullptr);
             continue;
         }
 
@@ -503,16 +558,31 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
             const std::string message = "request body empty";
             logger::warn("Protocol v2 request_id=" + std::to_string(header.request_id) + " has empty body");
             write_protocol_error(std::cout, header.request_id, ProtocolStatus::ValidationError, message);
-            record_outcome(header.request_id, ProtocolStatus::ValidationError, message, 0, frame_start);
+            record_outcome(header.request_id,
+                           ProtocolStatus::ValidationError,
+                           message,
+                           0,
+                           frame_start,
+                           message_len,
+                           0,
+                           nullptr);
             continue;
         }
 
         RequestPayload request;
-        if (!parse_request_payload(body_ptr, body_size, opts.max_batch_items, request, header_error)) {
+        ProtocolStatus payload_status = ProtocolStatus::ValidationError;
+        if (!parse_request_payload(body_ptr, body_size, opts.max_batch_items, request, header_error, payload_status)) {
             logger::error("Protocol v2 request_id=" + std::to_string(header.request_id) +
                           " payload parse failed: " + header_error);
-            write_protocol_error(std::cout, header.request_id, ProtocolStatus::ValidationError, header_error);
-            record_outcome(header.request_id, ProtocolStatus::ValidationError, header_error, 0, frame_start);
+            write_protocol_error(std::cout, header.request_id, payload_status, header_error);
+            record_outcome(header.request_id,
+                           payload_status,
+                           header_error,
+                           0,
+                           frame_start,
+                           message_len,
+                           0,
+                           nullptr);
             continue;
         }
 
@@ -535,7 +605,14 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
                 logger::error("Engine failed processing request_id=" + std::to_string(header.request_id) +
                               " image index=" + std::to_string(i));
                 write_protocol_error(std::cout, header.request_id, ProtocolStatus::EngineError, error_msg);
-                record_outcome(header.request_id, ProtocolStatus::EngineError, error_msg, i, frame_start);
+                record_outcome(header.request_id,
+                               ProtocolStatus::EngineError,
+                               error_msg,
+                               i,
+                               frame_start,
+                               message_len,
+                               0,
+                               &request);
                 failed = true;
                 break;
             }
@@ -546,8 +623,20 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
             continue;
         }
 
+        size_t output_bytes = 0;
+        for (const auto& output : outputs) {
+            output_bytes += output.size();
+        }
+
         write_protocol_response(std::cout, header.request_id, ProtocolStatus::Ok, "", outputs);
-        record_outcome(header.request_id, ProtocolStatus::Ok, "", outputs.size(), frame_start);
+        record_outcome(header.request_id,
+                       ProtocolStatus::Ok,
+                       "",
+                       outputs.size(),
+                       frame_start,
+                       message_len,
+                       output_bytes,
+                       &request);
         ++handled;
     }
 
@@ -575,13 +664,6 @@ int run_stdin_mode(BaseEngine* engine, const Options& opts) {
         return 1;
     }
 
-    // Check if batch mode is requested (protocol v1)
-    // Protocol: [num_images:u32][size1:u32][data1][size2:u32][data2]...
-    if (opts.batch_size > 0) {
-        logger::info("Batch stdin mode enabled (batch_size=" + std::to_string(opts.batch_size) + ")");
-        return run_batch_stdin(engine, opts);
-    }
-
     // Legacy single-image mode: reads stdin until EOF then writes raw output bytes to stdout.
     // NOTE: In this mode, the caller must close stdin (send EOF) before the process can start
     // processing; otherwise the process will block waiting for more input.
@@ -602,171 +684,7 @@ int run_stdin_mode(BaseEngine* engine, const Options& opts) {
         return 0;
     }
 
-    // Keep-alive framed mode (streaming without EOF):
-    // stdin  : [input_size:u32_le][input_bytes...]
-    // stdout : [status:u32_le][output_size:u32_le][output_bytes...]
-    // Where status=0 on success, non-zero on error. input_size=0 cleanly ends the loop.
-    logger::info("--keep-alive enabled; using framed stdin/stdout protocol");
-
-    if (opts.protocol == Options::Protocol::V2) {
-        return run_keep_alive_protocol_v2(engine, opts);
-    }
-
-    while (true) {
-        uint32_t input_size = 0;
-        if (!read_u32(std::cin, input_size)) {
-            break; // EOF
-        }
-
-        if (input_size == 0) {
-            break;
-        }
-
-        if (input_size > kMaxImageSizeBytes) {
-            logger::error("stdin frame too large: " + std::to_string(input_size));
-            return 1;
-        }
-
-        std::vector<uint8_t> input;
-        input.resize(input_size);
-        if (!read_exact(std::cin, input.data(), input.size())) {
-            logger::error("Failed to read stdin frame payload (" + std::to_string(input_size) + " bytes)");
-            return 1;
-        }
-
-        std::vector<uint8_t> output;
-        uint32_t status = 0;
-        if (!engine->process_single(input.data(), input.size(), output, opts.output_format)) {
-            logger::error("Failed to process stdin frame payload");
-            status = 1;
-            output.clear();
-        }
-
-        write_u32(std::cout, status);
-        write_u32(std::cout, static_cast<uint32_t>(output.size()));
-        if (!output.empty()) {
-            std::cout.write(reinterpret_cast<const char*>(output.data()), output.size());
-        }
-        std::cout.flush();
-    }
-
-    return 0;
-}
-
-// Batch stdin processing using Pipeline Streaming Multi-Thread (v4)
-// Architecture: Reader → InputQueue → Worker → OutputQueue → Writer
-// Reference: Producer-Consumer pattern with bounded blocking queues
-void log_pipeline_metrics(const PipelineMetrics& metrics) {
-    const uint32_t processed = metrics.processed.load(std::memory_order_relaxed);
-    const uint32_t errors = metrics.errors.load(std::memory_order_relaxed);
-    const uint64_t total_ns = metrics.total_ns.load(std::memory_order_relaxed);
-    const uint64_t input_bytes = metrics.input_bytes.load(std::memory_order_relaxed);
-    const uint64_t output_bytes = metrics.output_bytes.load(std::memory_order_relaxed);
-
-    if (processed == 0 && errors == 0) {
-        return;
-    }
-
-    const double avg_ms = processed ? (total_ns / double(processed)) / 1e6 : 0.0;
-    const double input_mb = input_bytes / double(1024 * 1024);
-    const double output_mb = output_bytes / double(1024 * 1024);
-
-    std::ostringstream summary;
-    summary << std::fixed << std::setprecision(2);
-    summary << "Batch pipeline summary: processed=" << processed
-            << ", errors=" << errors
-            << ", avg_latency_ms=" << avg_ms
-            << ", input_mb=" << input_mb
-            << ", output_mb=" << output_mb;
-
-    logger::info(summary.str());
-}
-
-int run_batch_stdin(BaseEngine* engine, const Options& opts) {
-    // Read number of images header
-    uint32_t num_images = 0;
-    if (!read_u32(std::cin, num_images)) {
-        logger::error("Failed to read num_images from stdin");
-        return 1;
-    }
-
-    if (num_images == 0 || num_images > 1000) {
-        logger::error("Invalid num_images: " + std::to_string(num_images));
-        return 1;
-    }
-
-    logger::info("Batch processing " + std::to_string(num_images) + " images (Pipeline Streaming Multi-Thread v4)");
-
-    // Write result count header immediately (protocol v4)
-    write_u32(std::cout, num_images);
-    std::cout.flush();
-
-    // Create bounded queues with optimal capacity for parallelism
-    // Capacity=4 allows better overlap between Reader/Worker/Writer threads
-    // InputQueue: 4 × 5MB = 20MB (compressed images)
-    // OutputQueue: 4 × 10MB = 40MB (compressed results)
-    // Worker scope: ~30MB RGB uncompressed (freed after each iteration)
-    // Total queue memory: ~60MB (trade-off: memory vs throughput)
-    const size_t QUEUE_CAPACITY = 4;
-    BoundedBlockingQueue<InputItem> input_queue(QUEUE_CAPACITY);
-    BoundedBlockingQueue<OutputItem> output_queue(QUEUE_CAPACITY);
-    PipelineMetrics metrics;
-
-    // Error flag for graceful shutdown
-    std::atomic<bool> error_flag(false);
-
-    logger::info("Pipeline queues created: input_queue(cap=" + std::to_string(QUEUE_CAPACITY) +
-                "), output_queue(cap=" + std::to_string(QUEUE_CAPACITY) + ")");
-
-    // Launch 3 threads in parallel
-    // Thread 1: Reader (stdin → input_queue)
-    std::thread reader_thread(
-        reader_thread_func,
-        std::ref(input_queue),
-        num_images,
-        std::ref(error_flag)
-    );
-
-    // Thread 2: Worker (input_queue → GPU → output_queue)
-    const bool log_memory = opts.verbose || opts.profiling;
-    std::thread worker_thread(
-        worker_thread_func,
-        std::ref(input_queue),
-        std::ref(output_queue),
-        engine,
-        opts.output_format,
-        std::ref(error_flag),
-        std::ref(metrics),
-        log_memory
-    );
-
-    // Thread 3: Writer (output_queue → stdout)
-    std::thread writer_thread(
-        writer_thread_func,
-        std::ref(output_queue),
-        std::ref(error_flag)
-    );
-
-    logger::info("Pipeline threads launched: reader, worker, writer running in parallel");
-
-    // Wait for all threads to complete (join)
-    reader_thread.join();
-    logger::info("Reader thread joined");
-
-    worker_thread.join();
-    logger::info("Worker thread joined");
-
-    writer_thread.join();
-    logger::info("Writer thread joined");
-
-    // Check for errors
-    log_pipeline_metrics(metrics);
-
-    if (error_flag) {
-        logger::error("Batch processing failed: error occurred in one or more threads");
-        return 1;
-    }
-
-    logger::info("Batch stdin mode completed successfully (pipeline v4)");
-    return 0;
+    // Keep-alive framed mode (streaming without EOF) using protocol v2.
+    logger::info("--keep-alive enabled; using protocol v2 framing");
+    return run_keep_alive_protocol_v2(engine, opts);
 }

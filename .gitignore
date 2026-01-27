@@ -17,6 +17,7 @@ backend/build/
 /results/
 /img_test/
 /test_output*/
+/models/
 
 # Source code
 /ncnn/

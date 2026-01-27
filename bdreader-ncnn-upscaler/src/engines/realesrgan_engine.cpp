@@ -17,7 +17,7 @@ bool RealESRGANEngine::init(const Options& opts) {
 
     std::filesystem::path candidate(opts.model);
     if (candidate.empty()) {
-        candidate = "backend/models/realesrgan";
+        candidate = "models/realesrgan";
     }
 
     if (!std::filesystem::exists(candidate)) {

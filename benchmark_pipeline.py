@@ -8,6 +8,40 @@ import struct
 import subprocess
 from pathlib import Path
 
+K_MAGIC = 0x42524452
+K_VERSION = 2
+MSG_TYPE_REQUEST = 1
+
+
+def build_request_frame(request_id: int,
+                        engine: int,
+                        meta: str,
+                        gpu_id: int,
+                        batch_count: int,
+                        images: list[bytes]) -> bytes:
+    header = struct.pack("<IBBI", K_MAGIC, K_VERSION, MSG_TYPE_REQUEST, request_id)
+    payload = bytearray()
+    payload.append(engine)
+    payload.extend(struct.pack("<I", len(meta)))
+    payload.extend(meta.encode())
+    payload.extend(struct.pack("<i", gpu_id))
+    payload.extend(struct.pack("<I", batch_count))
+    for image in images:
+        payload.extend(struct.pack("<I", len(image)))
+        payload.extend(image)
+    total_len = len(header) + len(payload)
+    return struct.pack("<I", total_len) + header + payload
+
+
+def parse_response(payload: bytes) -> tuple[int, int, str]:
+    offset = 0
+    request_id, status, error_len = struct.unpack_from("<III", payload, offset)
+    offset += 12
+    error = payload[offset : offset + error_len].decode("utf-8", "replace")
+    offset += error_len
+    result_count = struct.unpack_from("<I", payload, offset)[0]
+    return status, result_count, error
+
 def benchmark_batch(num_images: int, queue_capacity: int, test_image: Path) -> dict:
     """Benchmark batch processing with specific queue capacity"""
     
@@ -15,24 +49,30 @@ def benchmark_batch(num_images: int, queue_capacity: int, test_image: Path) -> d
     with open(test_image, 'rb') as f:
         image_data = f.read()
     
-    # Build payload
-    payload = bytearray()
-    payload.extend(struct.pack('<I', num_images))
+    # Build framed request (protocol v2)
+    images = [image_data] * num_images
+    frame = build_request_frame(
+        request_id=1,
+        engine=0,
+        meta='F',
+        gpu_id=0,
+        batch_count=num_images,
+        images=images
+    )
+    shutdown_frame = struct.pack('<I', 0)
+    payload = frame + shutdown_frame
     
-    for _ in range(num_images):
-        payload.extend(struct.pack('<I', len(image_data)))
-        payload.extend(image_data)
-    
-    # Run binary with timing
-    binary = Path("/config/workspace/BDReader-Rust/ncnn_bin/build/bdreader-ncnn-upscaler")
+    repo_root = Path(__file__).resolve().parent
+    binary = repo_root / "bdreader-ncnn-upscaler" / "build-release" / "bdreader-ncnn-upscaler"
+    model_path = repo_root / "models" / "realcugan" / "models-se"
     
     cmd = [
         str(binary),
         '--engine', 'realcugan',
         '--mode', 'stdin',
-        '--batch-size', str(num_images),
+        '--keep-alive',
         '--quality', 'F',
-        '--model', '/config/workspace/BDReader-Rust/backend/models/realcugan/models-se',
+        '--model', str(model_path),
         '--gpu-id', '0',
     ]
     
@@ -53,7 +93,13 @@ def benchmark_batch(num_images: int, queue_capacity: int, test_image: Path) -> d
     if len(stdout) < 4:
         return {'success': False, 'error': 'Invalid output'}
     
-    num_results = struct.unpack('<I', stdout[:4])[0]
+    payload_len = struct.unpack('<I', stdout[:4])[0]
+    if len(stdout) < 4 + payload_len:
+        return {'success': False, 'error': 'Truncated output'}
+    
+    status, result_count, error_msg = parse_response(stdout[4:4 + payload_len])
+    if status != 0:
+        return {'success': False, 'error': f'Non-zero status {status}: {error_msg}'}
     
     return {
         'success': True,
@@ -62,11 +108,12 @@ def benchmark_batch(num_images: int, queue_capacity: int, test_image: Path) -> d
         'elapsed_seconds': elapsed,
         'images_per_second': num_images / elapsed,
         'ms_per_image': (elapsed * 1000) / num_images,
-        'num_results': num_results,
+        'num_results': result_count,
     }
 
 def main():
-    test_image = Path("/config/workspace/BDReader-Rust/backend/benches/images/0026_jpg.rf.f513d3f34c46bc9e458b6d82f1707f76.jpg")
+    repo_root = Path(__file__).resolve().parent
+    test_image = repo_root / "img_test" / "P00003.jpg"
     
     print("="*70)
     print("NCNN Pipeline Performance Benchmark")
