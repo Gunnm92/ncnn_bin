@@ -128,3 +128,9 @@ Certains modèles peuvent être plus lents. Augmentez le timeout dans le script 
 - [ ] Ajouter des graphiques de performance
 - [ ] Comparaison visuelle des résultats
 - [ ] Tests avec différents GPU (multi-GPU)
+
+## Tests du protocole v2 keep-alive
+
+- **Unité** : `protocol_request_payload_test` (CMake target) vérifie le parsing `BRDR`/meta/batch_count/images` et rejette un `batch_count` > `--max-batch-items`. Il se compile avec `cmake --build build --target protocol_request_payload_test` puis `ctest -R protocol_request_payload_test`.  
+- **Intégration** : `tests/protocol_v2_integration.py` construit un message encodé, lance `bdreader-ncnn-upscaler --mode stdin --keep-alive --protocol v2`, envoie deux images encodées et valide que la réponse contient `status_code == 0`, un `result_count` égal au batch demandé et deux sorties. Lancer avec `python3 tests/protocol_v2_integration.py --binary /chemin/binaire`.
+- **Stress keep-alive** : `tests/protocol_v2_keepalive.py` ouvre un seul process, envoie 10 requêtes successives, injecte une trame invalide et vérifie que la suivante réussit toujours, puis termine proprement. Lancer avec `python3 tests/protocol_v2_keepalive.py --binary ./build/bdreader-ncnn-upscaler`.

@@ -2,6 +2,7 @@
 
 #include "../utils/logger.hpp"
 #include "../utils/blocking_queue.hpp"
+#include "protocol_v2.hpp"
 
 #include <algorithm>
 #include <array>
@@ -27,7 +28,7 @@ std::vector<uint8_t> read_all_stream(std::istream& stream) {
     return buffer;
 }
 
-constexpr uint32_t kMaxImageSizeBytes = 50u * 1024u * 1024u;
+using namespace protocol_v2;
 
 // Read exact number of bytes from stdin
 bool read_exact(std::istream& stream, uint8_t* buffer, size_t size) {
@@ -65,90 +66,48 @@ void write_u32(std::ostream& stream, uint32_t value) {
     stream.write(reinterpret_cast<const char*>(bytes), 4);
 }
 
-constexpr uint32_t kProtocolMagic = 0x42524452; // 'BRDR'
-constexpr uint8_t kProtocolVersion = 2;
-constexpr size_t kProtocolHeaderSize = 4 + 1 + 1 + 4;
-
-enum class ProtocolMessageType : uint8_t {
-    Request = 1,
-    Response = 2,
-};
-
-enum class ProtocolStatus : uint32_t {
-    Ok = 0,
-    InvalidFrame = 1,
-    ValidationError = 2,
-    EngineError = 3,
-};
-
-uint32_t decode_u32_le(const uint8_t* ptr) {
-    return static_cast<uint32_t>(ptr[0]) |
-           (static_cast<uint32_t>(ptr[1]) << 8) |
-           (static_cast<uint32_t>(ptr[2]) << 16) |
-           (static_cast<uint32_t>(ptr[3]) << 24);
-}
-
-struct ProtocolHeader {
-    uint32_t magic;
-    uint8_t version;
-    uint8_t msg_type;
-    uint32_t request_id;
-};
-
-bool parse_protocol_header(const uint8_t* payload,
-                           size_t payload_size,
-                           ProtocolHeader& header,
-                           std::string& error) {
-    if (payload_size < kProtocolHeaderSize) {
-        error = "payload too small for protocol header";
-        return false;
-    }
-
-    header.magic = decode_u32_le(payload);
-    header.version = payload[4];
-    header.msg_type = payload[5];
-    header.request_id = decode_u32_le(payload + 6);
-
-    if (header.magic != kProtocolMagic) {
-        error = "invalid magic, expected BRDR";
-        return false;
-    }
-    if (header.version != kProtocolVersion) {
-        error = "unsupported protocol version " + std::to_string(header.version);
-        return false;
-    }
-
-    return true;
-}
-
 void write_protocol_response(std::ostream& stream,
                              uint32_t request_id,
-                             uint32_t status_code,
-                             const std::vector<uint8_t>& payload) {
-    const uint32_t body_len = static_cast<uint32_t>(payload.size());
-    const uint32_t header_len = sizeof(uint32_t) * 3;
-    const uint32_t total_len = header_len + body_len;
+                             ProtocolStatus status,
+                             const std::string& error_message,
+                             const std::vector<std::vector<uint8_t>>& outputs) {
+    const uint32_t error_len = static_cast<uint32_t>(error_message.size());
+    uint32_t payload_bytes = 4 + 4 + 4 + error_len + 4;
+    uint32_t outputs_bytes = 0;
+    for (const auto& output : outputs) {
+        outputs_bytes += 4 + static_cast<uint32_t>(output.size());
+    }
+    payload_bytes += outputs_bytes;
 
-    write_u32(stream, total_len);
+    write_u32(stream, payload_bytes);
     write_u32(stream, request_id);
-    write_u32(stream, status_code);
-    write_u32(stream, body_len);
-    if (body_len > 0) {
-        stream.write(reinterpret_cast<const char*>(payload.data()), body_len);
+    write_u32(stream, static_cast<uint32_t>(status));
+    write_u32(stream, error_len);
+    if (error_len > 0) {
+        stream.write(error_message.data(), error_len);
+    }
+    write_u32(stream, static_cast<uint32_t>(outputs.size()));
+    for (const auto& output : outputs) {
+        write_u32(stream, static_cast<uint32_t>(output.size()));
+        if (!output.empty()) {
+            stream.write(reinterpret_cast<const char*>(output.data()), output.size());
+        }
     }
     stream.flush();
-}
-
-std::vector<uint8_t> payload_from_text(const std::string& text) {
-    return std::vector<uint8_t>(text.begin(), text.end());
 }
 
 void write_protocol_error(std::ostream& stream,
                           uint32_t request_id,
                           ProtocolStatus status,
                           const std::string& message) {
-    write_protocol_response(stream, request_id, static_cast<uint32_t>(status), payload_from_text(message));
+    write_protocol_response(stream, request_id, status, message, {});
 }
+
+struct ProtocolMetrics {
+    std::atomic<uint32_t> processed{0};
+    std::atomic<uint32_t> errors{0};
+    std::atomic<uint64_t> total_ns{0};
+};
 
 bool discard_bytes(std::istream& stream, size_t bytes_to_discard) {
     constexpr size_t kChunk = 4096;
@@ -444,9 +403,38 @@ void writer_thread_func(
 int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
     constexpr uint32_t kMaxMessageBytes = 64u * 1024u * 1024u;
     uint32_t handled = 0;
+    ProtocolMetrics metrics;
+    const bool log_protocol = opts.log_protocol;
 
     logger::info("Protocol v2 keep-alive loop started (magic=BRDR version=2, max_message_bytes=" +
                  std::to_string(kMaxMessageBytes) + ")");
+
+    auto record_outcome = [&](uint32_t request_id,
+                              ProtocolStatus status,
+                              const std::string& error_message,
+                              size_t result_count,
+                              const std::chrono::steady_clock::time_point& start) {
+        const auto elapsed_ns =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
+        metrics.total_ns.fetch_add(elapsed_ns, std::memory_order_relaxed);
+        if (status == ProtocolStatus::Ok) {
+            metrics.processed.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            metrics.errors.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        if (log_protocol) {
+            std::ostringstream oss;
+            oss << "Protocol v2 response request_id=" << request_id
+                << " status=" << static_cast<uint32_t>(status)
+                << " elapsed_ms=" << std::fixed << std::setprecision(2) << (elapsed_ns / 1e6)
+                << " results=" << result_count;
+            if (!error_message.empty()) {
+                oss << " error='" << error_message << "'";
+            }
+            logger::info(oss.str());
+        }
+    };
 
     while (true) {
         uint32_t message_len = 0;
@@ -454,6 +442,8 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
             logger::info("Protocol v2 stream closed by peer");
             break;
         }
+
+        const auto frame_start = std::chrono::steady_clock::now();
 
         if (message_len == 0) {
             logger::info("Received shutdown frame (message_len=0)");
@@ -467,6 +457,7 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
                 break;
             }
             write_protocol_error(std::cout, 0, ProtocolStatus::InvalidFrame, "frame too short for header");
+            record_outcome(0, ProtocolStatus::InvalidFrame, "frame too short for header", 0, frame_start);
             continue;
         }
 
@@ -477,6 +468,7 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
                 break;
             }
             write_protocol_error(std::cout, 0, ProtocolStatus::InvalidFrame, "frame exceeds max size");
+            record_outcome(0, ProtocolStatus::InvalidFrame, "frame exceeds max size", 0, frame_start);
             continue;
         }
 
@@ -491,36 +483,85 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
         if (!parse_protocol_header(payload.data(), payload.size(), header, header_error)) {
             logger::error("Protocol header validation failed: " + header_error);
             write_protocol_error(std::cout, 0, ProtocolStatus::ValidationError, header_error);
+            record_outcome(0, ProtocolStatus::ValidationError, header_error, 0, frame_start);
             continue;
         }
 
         if (header.msg_type != static_cast<uint8_t>(ProtocolMessageType::Request)) {
+            const std::string message = "only request frames accepted";
             logger::error("Protocol v2 message_type=" + std::to_string(header.msg_type) +
                           " not supported; only request frames are allowed");
-            write_protocol_error(std::cout, header.request_id, ProtocolStatus::ValidationError,
-                                 "only request frames accepted");
+            write_protocol_error(std::cout, header.request_id, ProtocolStatus::ValidationError, message);
+            record_outcome(header.request_id, ProtocolStatus::ValidationError, message, 0, frame_start);
             continue;
         }
 
         const size_t body_size = payload.size() - kProtocolHeaderSize;
         const uint8_t* body_ptr = payload.data() + kProtocolHeaderSize;
-        logger::info("Protocol v2 request_id=" + std::to_string(header.request_id) +
-                     " payload_bytes=" + std::to_string(body_size));
 
-        std::vector<uint8_t> output;
         if (body_size == 0) {
+            const std::string message = "request body empty";
             logger::warn("Protocol v2 request_id=" + std::to_string(header.request_id) + " has empty body");
-        }
-
-        if (body_size > 0 && !engine->process_single(body_ptr, body_size, output, opts.output_format)) {
-            logger::error("Engine failed processing protocol v2 request_id=" + std::to_string(header.request_id));
-            write_protocol_error(std::cout, header.request_id, ProtocolStatus::EngineError,
-                                 "engine processing failed");
+            write_protocol_error(std::cout, header.request_id, ProtocolStatus::ValidationError, message);
+            record_outcome(header.request_id, ProtocolStatus::ValidationError, message, 0, frame_start);
             continue;
         }
 
-        write_protocol_response(header.request_id, static_cast<uint32_t>(ProtocolStatus::Ok), output);
+        RequestPayload request;
+        if (!parse_request_payload(body_ptr, body_size, opts.max_batch_items, request, header_error)) {
+            logger::error("Protocol v2 request_id=" + std::to_string(header.request_id) +
+                          " payload parse failed: " + header_error);
+            write_protocol_error(std::cout, header.request_id, ProtocolStatus::ValidationError, header_error);
+            record_outcome(header.request_id, ProtocolStatus::ValidationError, header_error, 0, frame_start);
+            continue;
+        }
+
+        logger::info("Protocol v2 request_id=" + std::to_string(header.request_id) +
+                     " engine=" + (request.engine == Options::EngineType::RealESRGAN ? "RealESRGAN" : "RealCUGAN") +
+                     " quality_or_scale='" + request.quality_or_scale +
+                     "' gpu_id=" + std::to_string(request.gpu_id) +
+                     " batch_count=" + std::to_string(request.batch_count));
+
+        std::vector<std::vector<uint8_t>> outputs;
+        outputs.reserve(request.batch_count);
+        bool failed = false;
+
+        for (uint32_t i = 0; i < request.batch_count; ++i) {
+            const auto& image = request.images[i];
+            std::vector<uint8_t> output;
+            if (!engine->process_single(image.data(), image.size(), output, opts.output_format)) {
+                const std::string error_msg =
+                    "engine processing failed at index " + std::to_string(i);
+                logger::error("Engine failed processing request_id=" + std::to_string(header.request_id) +
+                              " image index=" + std::to_string(i));
+                write_protocol_error(std::cout, header.request_id, ProtocolStatus::EngineError, error_msg);
+                record_outcome(header.request_id, ProtocolStatus::EngineError, error_msg, i, frame_start);
+                failed = true;
+                break;
+            }
+            outputs.push_back(std::move(output));
+        }
+
+        if (failed) {
+            continue;
+        }
+
+        write_protocol_response(std::cout, header.request_id, ProtocolStatus::Ok, "", outputs);
+        record_outcome(header.request_id, ProtocolStatus::Ok, "", outputs.size(), frame_start);
         ++handled;
+    }
+
+    const uint32_t processed = metrics.processed.load(std::memory_order_relaxed);
+    const uint32_t errors = metrics.errors.load(std::memory_order_relaxed);
+    const uint64_t total_ns = metrics.total_ns.load(std::memory_order_relaxed);
+    if (processed || errors) {
+        const double avg_ms = processed ? (total_ns / double(processed)) / 1e6 : 0.0;
+        std::ostringstream summary;
+        summary << std::fixed << std::setprecision(2);
+        summary << "Protocol v2 summary: processed=" << processed
+                << ", errors=" << errors
+                << ", avg_latency_ms=" << avg_ms;
+        logger::info(summary.str());
     }
 
     logger::info("Protocol v2 keep-alive loop exiting after " + std::to_string(handled) + " frames");

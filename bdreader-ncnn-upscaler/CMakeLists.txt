@@ -53,3 +53,11 @@ target_link_libraries(bdreader-ncnn-upscaler
 )
 
 install(TARGETS bdreader-ncnn-upscaler RUNTIME DESTINATION bin)
+
+add_executable(protocol_request_payload_test
+    src/protocol_request_payload_test.cpp
+)
+target_include_directories(protocol_request_payload_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+add_test(NAME protocol_request_payload_test COMMAND protocol_request_payload_test)

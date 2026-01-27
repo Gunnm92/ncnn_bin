@@ -15,61 +15,55 @@ Un seul process `bdreader-ncnn-upscaler` reste vivant (`--keep-alive`) et traite
   - [x] valider la longueur totale + garder la loop vivant avec erreurs structurées
 
 ## 2) Spécification request (batch)
-- [ ] Payload request contient:
-  - [ ] engine (enum)
-  - [ ] quality/scale (string length + bytes)
-  - [ ] gpu_id (i32)
-  - [ ] batch_count (u32)
-  - [ ] images: répétition de `[u32 img_len][img_bytes]`
-- [ ] Rejeter proprement `batch_count > --max-batch-items`
-- [ ] Appliquer des limites de sécurité (message_len/image_len)
+- [x] Payload request contient:
+  - [x] engine (enum)
+  - [x] quality/scale (string length + bytes)
+  - [x] gpu_id (i32)
+  - [x] batch_count (u32)
+  - [x] images: répétition de `[u32 img_len][img_bytes]`
+- [x] Rejeter proprement `batch_count > --max-batch-items`
+- [x] Appliquer des limites de sécurité (message_len/image_len)
 
 ## 3) Spécification response
-- [ ] Payload response contient:
-  - [ ] request_id
-  - [ ] status_code (0 = OK)
-  - [ ] error_len + error_bytes (UTF-8)
-  - [ ] result_count
-  - [ ] outputs: répétition de `[u32 out_len][out_bytes]`
-- [ ] Contrat:
-  - [ ] si `status_code == 0` → `result_count == batch_count`
-  - [ ] ordre des outputs = ordre des inputs
+- [x] Payload response contient:
+  - [x] request_id
+  - [x] status_code (0 = OK)
+  - [x] error_len + error_bytes (UTF-8)
+  - [x] result_count
+  - [x] outputs: répétition de `[u32 out_len][out_bytes]`
+- [x] Contrat:
+  - [x] si `status_code == 0` → `result_count == batch_count`
+  - [x] ordre des outputs = ordre des inputs
 
 ## 4) Boucle keep-alive (comportement)
-- [ ] Initialiser les modèles/engine une seule fois
-- [ ] Boucler jusqu’à EOF stdin:
-  - [ ] lire `message_len`
-  - [ ] lire `payload`
-  - [ ] parser / valider
-  - [ ] traiter le batch
-  - [ ] écrire la response
-  - [ ] flush stdout
-- [ ] En cas d’erreur de parsing/traitement:
-  - [ ] ne pas quitter
-  - [ ] renvoyer une erreur structurée si possible
+- [x] Initialiser les modèles/engine une seule fois
+- [x] Boucler jusqu’à EOF stdin:
+  - [x] lire `message_len`
+  - [x] lire `payload`
+  - [x] parser / valider
+  - [x] traiter le batch
+  - [x] écrire la response
+  - [x] flush stdout
+- [x] En cas d’erreur de parsing/traitement:
+  - [x] ne pas quitter
+  - [x] renvoyer une erreur structurée si possible
 
 ## 5) Compatibilité legacy (important pour transition)
-- [ ] Option A (recommandée): backend migre vers v2
-- [ ] Option B (transition): garder un mode legacy
-  - [ ] legacy keep-alive par image:
-    - request: `[u32 frame_len][frame_bytes]`
-    - response: `[u32 status][u32 out_len][out_bytes]`
-- [ ] Ajouter un flag explicite: `--protocol v1|v2`
-- [ ] Clarifier le rôle de `--batch-size` (help: “protocol v1”)
-- [ ] Décider si `--batch-size` devient un alias `--protocol v1` ou est déprécié
+- [x] backend migre vers v2
+- [x] retirer les références à `--protocol v1` / `--batch-size` pour éviter toute confusion : seul le protocole v2 gardera le process en vie
 
 ## 6) Observabilité / debug
-- [ ] Logguer une ligne par requête: request_id, engine, quality, gpu_id, batch_count, timings
-- [ ] Logguer clairement les erreurs de protocole (sans spam binaire)
-- [ ] Optionnel: `--log-protocol` pour debug bas niveau
+- [x] Logguer une ligne par requête: request_id, engine, quality, gpu_id, batch_count, timings
+- [x] Logguer clairement les erreurs de protocole (sans spam binaire)
+- [x] Optionnel: `--log-protocol` pour debug bas niveau
 - [ ] Définir précisément `--profiling` en mode keep-alive
-- [ ] Éviter toute sortie non binaire sur stdout si stdout porte le protocole
+- [x] Éviter toute sortie non binaire sur stdout si stdout porte le protocole
 
 ## 7) Critères d’acceptation (tests)
-- [ ] Un même process traite 10 requêtes batch successives sans redémarrer
-- [ ] Un batch N renvoie N résultats (et dans le bon ordre)
-- [ ] Une requête invalide renvoie une erreur, la suivante fonctionne
-- [ ] `batch_count > --max-batch-items` → erreur propre
+- [x] Un même process traite 10 requêtes batch successives sans redémarrer
+- [x] Un batch N renvoie N résultats (et dans le bon ordre)
+- [x] Une requête invalide renvoie une erreur, la suivante fonctionne
+- [x] `batch_count > --max-batch-items` → erreur propre
 - [ ] Gains mesurables vs spawn par requête
 - [ ] Scénario “petite machine” (RAM limitée) ne crash pas et reste réactif
 

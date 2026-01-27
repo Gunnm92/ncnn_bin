@@ -45,6 +45,7 @@ Options importantes :
 - `--tile-size N` (force un tiling plus conservateur, utile contre les OOM)
 - `--max-batch-items N` (limite le buffering interne en stdin/batch)
 - `--verbose` (logs) / `--profiling` (métriques par image)
+- `--log-protocol` (log détaillé par trame pour le debugging du framing binaire)
 
 ### Mode `file`
 
@@ -67,11 +68,13 @@ cat img_test/P00003.jpg | bdreader-ncnn-upscaler/build-release/bdreader-ncnn-ups
 
 Note : en mode `stdin` “1 image”, le binaire lit stdin **jusqu’à EOF** avant de lancer le traitement. Si tu pipes depuis un programme (Rust/Go/etc.), il faut **fermer stdin** (EOF) après avoir écrit l’image, sinon ça peut “bloquer”.
 
-### Mode `stdin` + `--keep-alive` (framed)
+### Mode `stdin` + `--keep-alive` (protocole v2)
 
-En `--keep-alive`, le mode `stdin` utilise un framing binaire (pour éviter d’avoir besoin d’EOF à chaque image) :
-- stdin : `[size:u32_le][bytes...]` (répété, `size=0` = stop)
-- stdout : `[status:u32_le][size:u32_le][bytes...]` (status=0 ok)
+Le protocole v2 évite l’usage d’EOF en encadrant chaque requête/réponse avec un header signé :
+- `stdin` : `[frame_len:u32_le][BRDR header (magic/version/msg_type/request_id)][payload...]`. Le header est toujours `magic="BRDR" (0x42524452)`, `version=2`, `msg_type=1` (request). `frame_len` inclut la taille du header + du payload.
+- `stdout` : `[payload_len:u32_le][request_id:u32][status:u32][error_len:u32][error_bytes][result_count:u32][out_len:u32][out_bytes]...]`. `status=0` → `result_count` images. `status!=0` renvoie une erreur explicite sans interrompre le process.
+- `--log-protocol` ajoute un log détaillé par trame (request_id, status, durée, error) pour déboguer les flux binaires.
+- `--protocol v1` (ou `--batch-size N`) reste disponible comme mode legacy pour les clients existants.
 
 ### Mode `stdin` batch (protocol v1)
 
