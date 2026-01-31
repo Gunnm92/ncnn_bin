@@ -17,6 +17,7 @@ backend/build/
 /results/
 /img_test/
 /test_output*/
+/tests_output/
 /models/
 
 # Source code
@@ -28,6 +29,10 @@ __pycache__/
 
 # Logs
 *.log
+
+# IDE and editor files
+.claude/
+.vscode/
 
 # OS generated files
 .DS_Store
