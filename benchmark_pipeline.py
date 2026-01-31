@@ -19,7 +19,7 @@ def build_request_frame(request_id: int,
                         gpu_id: int,
                         batch_count: int,
                         images: list[bytes]) -> bytes:
-    header = struct.pack("<IBBI", K_MAGIC, K_VERSION, MSG_TYPE_REQUEST, request_id)
+    header = struct.pack("<IIII", K_MAGIC, K_VERSION, MSG_TYPE_REQUEST, request_id)
     payload = bytearray()
     payload.append(engine)
     payload.extend(struct.pack("<I", len(meta)))

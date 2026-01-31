@@ -17,7 +17,7 @@ MSG_TYPE_RESPONSE = 2
 
 
 def build_request(request_id, engine, meta, gpu_id, batch_count, images):
-    header = struct.pack("<IBBI", K_MAGIC, K_VERSION, MSG_TYPE_REQUEST, request_id)
+    header = struct.pack("<IIII", K_MAGIC, K_VERSION, MSG_TYPE_REQUEST, request_id)
     payload = bytearray()
     payload.append(engine)
     payload.extend(struct.pack("<I", len(meta)))
@@ -32,7 +32,7 @@ def build_request(request_id, engine, meta, gpu_id, batch_count, images):
 
 
 def build_frame_with_msg_type(request_id, msg_type):
-    header = struct.pack("<IBBI", K_MAGIC, K_VERSION, msg_type, request_id)
+    header = struct.pack("<IIII", K_MAGIC, K_VERSION, msg_type, request_id)
     payload = bytearray()
     payload.extend(struct.pack("<I", 0))
     return struct.pack("<I", len(header)) + header + payload

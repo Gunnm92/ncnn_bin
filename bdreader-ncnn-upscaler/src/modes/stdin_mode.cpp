@@ -406,6 +406,13 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
     ProtocolMetrics metrics;
     const bool log_protocol = opts.log_protocol;
 
+    // CRITICAL: Disable stdout buffering for protocol mode
+    // When stdout is piped (e.g., from Rust), it becomes fully buffered by default.
+    // This causes responses to be delayed until the buffer fills or the process exits.
+    // Setting unbuffered mode ensures each write is immediately visible to the parent process.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    std::ios::sync_with_stdio(false);  // Disable C++ stream sync for performance
+
     logger::info("Protocol v2 keep-alive loop started (magic=BRDR version=2, max_message_bytes=" +
                  std::to_string(kMaxMessageBytes) + ")");
 
@@ -523,7 +530,7 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
         std::string header_error;
         if (!parse_protocol_header(payload.data(), payload.size(), header, header_error)) {
             logger::error("Protocol header validation failed: " + header_error);
-            write_protocol_error(std::cout, 0, ProtocolStatus::ValidationError, header_error);
+            write_protocol_error(std::cout, header.request_id, ProtocolStatus::ValidationError, header_error);
             record_outcome(0,
                            ProtocolStatus::ValidationError,
                            header_error,
@@ -535,7 +542,7 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
             continue;
         }
 
-        if (header.msg_type != static_cast<uint8_t>(ProtocolMessageType::Request)) {
+        if (header.msg_type != static_cast<uint32_t>(ProtocolMessageType::Request)) {
             const std::string message = "only request frames accepted";
             logger::error("Protocol v2 message_type=" + std::to_string(header.msg_type) +
                           " not supported; only request frames are allowed");

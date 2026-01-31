@@ -4,6 +4,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -11,7 +13,7 @@ namespace protocol_v2 {
 
 constexpr uint32_t kProtocolMagic = 0x42524452; // 'BRDR'
 constexpr uint8_t kProtocolVersion = 2;
-constexpr size_t kProtocolHeaderSize = 4 + 1 + 1 + 4;
+constexpr size_t kProtocolHeaderSize = 4 + 4 + 4 + 4;
 constexpr size_t kMaxMetaStringBytes = 64;
 constexpr uint32_t kMaxImageSizeBytes = 50u * 1024u * 1024u;
 constexpr size_t kMaxBatchPayloadBytes = 48u * 1024u * 1024u;
@@ -32,10 +34,12 @@ enum class ProtocolStatus : uint32_t {
 
 struct ProtocolHeader {
     uint32_t magic;
-    uint8_t version;
-    uint8_t msg_type;
+    uint32_t version;
+    uint32_t msg_type;
     uint32_t request_id;
-};
+} __attribute__((packed));
+
+static_assert(sizeof(ProtocolHeader) == 16, "BRDR header must be exactly 16 bytes");
 
 struct RequestPayload {
     Options::EngineType engine;
@@ -80,10 +84,11 @@ inline bool parse_protocol_header(const uint8_t* payload,
         return false;
     }
 
+    // Parse header fields using little-endian decoding (portable)
     header.magic = decode_u32_le(payload);
-    header.version = payload[4];
-    header.msg_type = payload[5];
-    header.request_id = decode_u32_le(payload + 6);
+    header.version = decode_u32_le(payload + 4);
+    header.msg_type = decode_u32_le(payload + 8);
+    header.request_id = decode_u32_le(payload + 12);
 
     if (header.magic != kProtocolMagic) {
         error = "invalid magic, expected BRDR";
@@ -93,8 +98,7 @@ inline bool parse_protocol_header(const uint8_t* payload,
         error = "unsupported protocol version " + std::to_string(header.version);
         return false;
     }
-    if (header.msg_type != static_cast<uint8_t>(ProtocolMessageType::Request) &&
-        header.msg_type != static_cast<uint8_t>(ProtocolMessageType::Response)) {
+    if (header.msg_type != static_cast<uint32_t>(ProtocolMessageType::Request)) {
         error = "unsupported msg_type " + std::to_string(header.msg_type);
         return false;
     }

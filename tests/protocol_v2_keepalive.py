@@ -15,7 +15,7 @@ MSG_TYPE_REQUEST = 1
 
 
 def build_request(request_id, engine, meta, gpu_id, batch_count, images):
-    header = struct.pack("<IBBI", K_MAGIC, K_VERSION, MSG_TYPE_REQUEST, request_id)
+    header = struct.pack("<IIII", K_MAGIC, K_VERSION, MSG_TYPE_REQUEST, request_id)
     payload = bytearray()
     payload.append(engine)
     payload.extend(struct.pack("<I", len(meta)))
@@ -30,7 +30,7 @@ def build_request(request_id, engine, meta, gpu_id, batch_count, images):
 
 
 def build_invalid_header(request_id):
-    header = struct.pack("<IBBI", 0x12345678, K_VERSION, MSG_TYPE_REQUEST, request_id)
+    header = struct.pack("<IIII", 0x12345678, K_VERSION, MSG_TYPE_REQUEST, request_id)
     payload = b""
     return struct.pack("<I", len(header)) + header + payload
 
