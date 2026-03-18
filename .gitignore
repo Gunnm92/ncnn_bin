@@ -16,8 +16,8 @@ backend/build/
 # Intermediate/test outputs
 /results/
 /img_test/
-/test_output*/
-/tests_output/
+/test*/
+/tests*/
 /models/
 
 # Source code
