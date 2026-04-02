@@ -1,19 +1,25 @@
 #include "options.hpp"
 
+#include <algorithm>
 #include <cxxopts.hpp>
 #include <iostream>
 #include <string>
 
 namespace {
+std::string to_lower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
+    return s;
+}
+
 Options::EngineType parse_engine(const std::string& value) {
-    if (value == "realesrgan") {
+    if (to_lower(value) == "realesrgan") {
         return Options::EngineType::RealESRGAN;
     }
     return Options::EngineType::RealCUGAN;
 }
 
 Options::Mode parse_mode(const std::string& value) {
-    if (value == "stdin") {
+    if (to_lower(value) == "stdin") {
         return Options::Mode::Stdin;
     }
     return Options::Mode::File;

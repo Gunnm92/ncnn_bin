@@ -15,8 +15,9 @@ std::vector<Tile> calculate_tiles(
     const int tile_step = config.tile_size - config.overlap;
 
     // Calculate number of tiles needed
-    int tiles_x = std::ceil(static_cast<float>(image_width - config.overlap) / tile_step);
-    int tiles_y = std::ceil(static_cast<float>(image_height - config.overlap) / tile_step);
+    // Guard against images smaller than the overlap to avoid negative division
+    int tiles_x = std::max(1, static_cast<int>(std::ceil(static_cast<float>(std::max(0, image_width - config.overlap)) / tile_step)));
+    int tiles_y = std::max(1, static_cast<int>(std::ceil(static_cast<float>(std::max(0, image_height - config.overlap)) / tile_step)));
 
     logger::info("Tiling: image " + std::to_string(image_width) + "x" + std::to_string(image_height) +
                 " → " + std::to_string(tiles_x) + "x" + std::to_string(tiles_y) + " tiles (size=" +

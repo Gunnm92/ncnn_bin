@@ -194,12 +194,14 @@ void reader_thread_func(
             if (!read_u32(std::cin, image_size)) {
                 logger::error("Reader: Failed to read image_size for image " + std::to_string(i));
                 error_flag = true;
+                input_queue.close();
                 return;
             }
 
             if (image_size == 0 || image_size > 50 * 1024 * 1024) {
                 logger::error("Reader: Invalid image_size for image " + std::to_string(i) + ": " + std::to_string(image_size));
                 error_flag = true;
+                input_queue.close();
                 return;
             }
 
@@ -209,6 +211,7 @@ void reader_thread_func(
             if (!read_exact(std::cin, image_data.data(), image_size)) {
                 logger::error("Reader: Failed to read image data for image " + std::to_string(i));
                 error_flag = true;
+                input_queue.close();
                 return;
             }
 
@@ -245,7 +248,6 @@ void worker_thread_func(
         logger::info("Worker thread started: GPU processing loop");
 
         uint32_t processed_count = 0;
-        uint32_t consecutive_errors = 0;  // Track consecutive errors for monitoring
         InputItem input_item;
 
         while (input_queue.pop(input_item)) {
@@ -275,15 +277,7 @@ void worker_thread_func(
                 if (!success) {
                     logger::error("Worker: Failed to process image " + std::to_string(input_item.id));
                     metrics.errors.fetch_add(1, std::memory_order_relaxed);
-
-                    // Track consecutive errors for monitoring.
-                    consecutive_errors++;
-
-                    // Free input buffer before continuing
-                    // Note: clear() without shrink_to_fit() avoids memory fragmentation
-                    // The buffer capacity is preserved for reuse in next iteration (Ring Buffer pattern)
                     input_item.data.clear();
-                    // Continue processing next image instead of breaking
                     continue;
                 }
 
@@ -297,9 +291,6 @@ void worker_thread_func(
                 // Cleanup inside a loop destroys the model and breaks subsequent images.
                 metrics.input_bytes.fetch_add(input_item.data.size(), std::memory_order_relaxed);
                 metrics.output_bytes.fetch_add(output_data.size(), std::memory_order_relaxed);
-
-                // Reset consecutive error counter on success
-                consecutive_errors = 0;
 
                 logger::info("Worker: Image " + std::to_string(input_item.id) + " processed, output size=" +
                             std::to_string(output_data.size()) + " bytes");
@@ -332,14 +323,7 @@ void worker_thread_func(
                 logger::error("Worker: Exception processing image " + std::to_string(input_item.id) +
                              ": " + std::string(e.what()));
                 metrics.errors.fetch_add(1, std::memory_order_relaxed);
-
-                // Track consecutive errors for monitoring.
-                consecutive_errors++;
-
-                // Free buffers (RAII will handle, but explicit is clear)
-                // Note: clear() without shrink_to_fit() avoids memory fragmentation
                 input_item.data.clear();
-                // Continue processing next image instead of breaking
                 continue;
             }
         }
@@ -410,7 +394,9 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
     // When stdout is piped (e.g., from Rust), it becomes fully buffered by default.
     // This causes responses to be delayed until the buffer fills or the process exits.
     // Setting unbuffered mode ensures each write is immediately visible to the parent process.
-    std::setvbuf(stdout, nullptr, _IONBF, 0);
+    if (std::setvbuf(stdout, nullptr, _IONBF, 0) != 0) {
+        logger::warn("Failed to set stdout unbuffered; protocol responses may be delayed");
+    }
     std::ios::sync_with_stdio(false);  // Disable C++ stream sync for performance
 
     logger::info("Protocol v2 keep-alive loop started (magic=BRDR version=2, max_message_bytes=" +

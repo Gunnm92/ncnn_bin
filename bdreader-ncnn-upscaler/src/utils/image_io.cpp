@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <utility>
 #include <webp/decode.h>
@@ -154,6 +155,14 @@ bool encode_image(const ImagePixels& img, const std::string& format, std::vector
     std::transform(fmt.begin(), fmt.end(), fmt.begin(), [](unsigned char c) { return std::tolower(c); });
 
     if (fmt == "webp") {
+        // WebP hard limit: VP8 stores frame dimensions on 14 bits → max 16383 (WEBP_MAX_DIMENSION)
+        if (img.width > WEBP_MAX_DIMENSION || img.height > WEBP_MAX_DIMENSION) {
+            std::fprintf(stderr, "[WARN] Image %dx%d exceeds WebP max dimension (%d); falling back to PNG\n",
+                         img.width, img.height, WEBP_MAX_DIMENSION);
+            fmt = "png";
+            goto encode_png;
+        }
+
         WebPConfig config;
         if (!WebPConfigInit(&config)) {
             return false;
@@ -175,6 +184,7 @@ bool encode_image(const ImagePixels& img, const std::string& format, std::vector
         pic->custom_ptr = writer_raii.get();
 
         if (!WebPPictureImportRGB(pic, img.pixels.data(), img.width * img.channels)) {
+            std::fprintf(stderr, "[ERROR] WebPPictureImportRGB failed (width=%d height=%d)\n", img.width, img.height);
             return false;
         }
 
@@ -188,6 +198,7 @@ bool encode_image(const ImagePixels& img, const std::string& format, std::vector
         return ok;
     }
 
+    encode_png:
     if (fmt == "png") {
         return stbi_write_png_to_func(write_callback, &out, img.width, img.height, img.channels, img.pixels.data(), img.width * img.channels) != 0;
     }

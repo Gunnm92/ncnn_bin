@@ -140,8 +140,6 @@ std::string RealCUGANEngine::choose_model() const {
             return "up2x-denoise2x";
         case 2:
             return "up2x-denoise3x";
-        case 3:
-            return "up2x-denoise3x";
         default:
             return "up2x-conservative";
     }
