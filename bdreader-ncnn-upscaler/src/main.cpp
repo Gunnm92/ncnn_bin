@@ -4,8 +4,9 @@
 #include "options.hpp"
 #include "utils/logger.hpp"
 
-#include <memory>
-#include <iostream>
+#if NCNN_VULKAN
+#include "gpu.h"
+#endif
 
 int main(int argc, char** argv) {
     Options opts;
@@ -15,27 +16,27 @@ int main(int argc, char** argv) {
 
     logger::set_level((opts.verbose || opts.profiling || opts.log_protocol) ? logger::Level::Info : logger::Level::Warn);
 
-    auto engine = make_engine(opts);
-    if (!engine) {
-        logger::error("Failed to initialize engine");
-        return 1;
-    }
-
     int exit_code = 0;
-    switch (opts.mode) {
-        case Options::Mode::File:
-            exit_code = run_file_mode(engine.get(), opts);
-            break;
-        case Options::Mode::Stdin:
-            exit_code = run_stdin_mode(engine.get(), opts);
-            break;
-    }
+    {
+        auto engine = make_engine(opts);
+        if (!engine) {
+            logger::error("Failed to initialize engine");
+            return 1;
+        }
 
-    engine->cleanup();
+        switch (opts.mode) {
+            case Options::Mode::File:
+                exit_code = run_file_mode(engine.get(), opts);
+                break;
+            case Options::Mode::Stdin:
+                exit_code = run_stdin_mode(engine.get(), opts);
+                break;
+        }
+        // Engine destructor runs here, releasing Vulkan/NCNN resources
+        // BEFORE ncnn::destroy_gpu_instance() tears down the global Vulkan context.
+    }
 
 #if NCNN_VULKAN
-    // Libère explicitement les ressources Vulkan/NCNN globales
-    // pour éviter les fuites lorsque le binaire est invoqué en boucle.
     ncnn::destroy_gpu_instance();
 #endif
 

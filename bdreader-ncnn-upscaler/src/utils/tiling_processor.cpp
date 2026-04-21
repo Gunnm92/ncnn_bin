@@ -101,9 +101,11 @@ bool process_with_tiling(
                     return false;
                 }
 
-                // Process tile
+                // Process tile — engines return the final upscaled tile at
+                // (tile.width * scale) × (tile.height * scale), padding already cropped.
                 std::vector<uint8_t> upscaled_tile_rgb;
-                int upscaled_width, upscaled_height;
+                int upscaled_width = 0;
+                int upscaled_height = 0;
                 if (!engine->process_rgb(tile_rgb.data(),
                                          tile.width,
                                          tile.height,
@@ -114,71 +116,26 @@ bool process_with_tiling(
                     return false;
                 }
 
-                // STEP 1: Crop padding from upscaled tile
-                // process_rgb() adds 18px padding which is now upscaled (18 * scale_factor on each side)
-                const int expected_width = tile.width * config.scale_factor;
-                const int expected_height = tile.height * config.scale_factor;
-                const int pad_pixels = image_padding::kDefaultUpscalerPadding * config.scale_factor;
+                // Extract the non-overlapping region of this tile. For non-border tiles,
+                // skip the overlap at the top/left to avoid duplicating pixels already
+                // contributed by previous tiles.
+                const int overlap_scaled = config.overlap * config.scale_factor;
+                const int src_offset_x = (tile.output_x > 0) ? overlap_scaled : 0;
+                const int src_offset_y = (tile.output_y > 0) ? overlap_scaled : 0;
+                const int blend_width = upscaled_width - src_offset_x;
+                const int blend_height = upscaled_height - src_offset_y;
 
-                std::vector<uint8_t> cropped_tile_rgb;
-                int cropped_width = expected_width;
-                int cropped_height = expected_height;
-
-                if (upscaled_width > expected_width || upscaled_height > expected_height) {
-                    // Crop padding from tile to get exact expected dimensions
-                    cropped_tile_rgb.resize(cropped_width * cropped_height * 3);
-
-                    const int max_offset_x = std::max(0, upscaled_width - cropped_width);
-                    const int max_offset_y = std::max(0, upscaled_height - cropped_height);
-                    const int start_x = std::min(pad_pixels, max_offset_x);
-                    const int start_y = std::min(pad_pixels, max_offset_y);
-
-                    for (int row = 0; row < cropped_height; ++row) {
-                        const uint8_t* src_row = upscaled_tile_rgb.data() + ((start_y + row) * upscaled_width + start_x) * 3;
-                        uint8_t* dst_row = cropped_tile_rgb.data() + row * cropped_width * 3;
-                        std::memcpy(dst_row, src_row, cropped_width * 3);
-                    }
-                } else {
-                    cropped_tile_rgb = std::move(upscaled_tile_rgb);
+                if (blend_width <= 0 || blend_height <= 0) {
+                    continue;
                 }
 
-                // STEP 2: Extract non-overlapping region (center cropping)
-                // For non-border tiles, skip the overlap region at the start to avoid duplication
-                int src_offset_x = 0;
-                int src_offset_y = 0;
-                int blend_width = cropped_width;
-                int blend_height = cropped_height;
-
-                // If not the first tile in X direction, skip the overlap at the start
-                if (tile.output_x > 0) {
-                    const int overlap_scaled = config.overlap * config.scale_factor;
-                    src_offset_x = overlap_scaled;
-                    blend_width -= overlap_scaled;
-                }
-
-                // If not the first tile in Y direction, skip the overlap at the start
-                if (tile.output_y > 0) {
-                    const int overlap_scaled = config.overlap * config.scale_factor;
-                    src_offset_y = overlap_scaled;
-                    blend_height -= overlap_scaled;
-                }
-
-                logger::info("Tiling: tile " + std::to_string(i) +
-                            " cropped=" + std::to_string(cropped_width) + "x" + std::to_string(cropped_height) +
-                            " blend_region=" + std::to_string(blend_width) + "x" + std::to_string(blend_height) +
-                            " offset=(" + std::to_string(src_offset_x) + "," + std::to_string(src_offset_y) + ")");
-
-                // Extract only the non-overlapping region to blend
-                std::vector<uint8_t> region_to_blend;
-                region_to_blend.resize(blend_width * blend_height * 3);
-
+                std::vector<uint8_t> region_to_blend(blend_width * blend_height * 3);
                 for (int row = 0; row < blend_height; ++row) {
-                    const uint8_t* src_row = cropped_tile_rgb.data() + ((src_offset_y + row) * cropped_width + src_offset_x) * 3;
+                    const uint8_t* src_row = upscaled_tile_rgb.data() + ((src_offset_y + row) * upscaled_width + src_offset_x) * 3;
                     uint8_t* dst_row = region_to_blend.data() + row * blend_width * 3;
                     std::memcpy(dst_row, src_row, blend_width * 3);
                 }
 
-                // Blend only the non-overlapping region into output
                 if (!tiling::blend_tile(region_to_blend.data(),
                                         blend_width,
                                         blend_height,

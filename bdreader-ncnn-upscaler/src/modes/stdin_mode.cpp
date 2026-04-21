@@ -322,6 +322,29 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
                      "' gpu_id=" + std::to_string(request.gpu_id) +
                      " batch_count=" + std::to_string(request.batch_count));
 
+        // The engine instance is configured once from opts at startup; it cannot switch
+        // engine or GPU per-request. Warn (don't fail) if the caller asks for something
+        // different — the request still runs on the configured engine.
+        if (request.engine != opts.engine) {
+            const auto opts_engine = (opts.engine == Options::EngineType::RealESRGAN) ? "RealESRGAN" : "RealCUGAN";
+            const auto req_engine = (request.engine == Options::EngineType::RealESRGAN) ? "RealESRGAN" : "RealCUGAN";
+            logger::warn(std::string("Request engine=") + req_engine +
+                         " differs from configured engine=" + opts_engine +
+                         "; processing with the configured engine");
+        }
+        if (opts.gpu_id != "auto") {
+            try {
+                const int configured_gpu = std::stoi(opts.gpu_id);
+                if (request.gpu_id != configured_gpu) {
+                    logger::warn("Request gpu_id=" + std::to_string(request.gpu_id) +
+                                 " differs from configured gpu_id=" + std::to_string(configured_gpu) +
+                                 "; processing on the configured GPU");
+                }
+            } catch (...) {
+                // opts.gpu_id is not a parseable int; leave as-is.
+            }
+        }
+
         std::vector<std::vector<uint8_t>> outputs;
         outputs.reserve(request.batch_count);
         bool failed = false;
