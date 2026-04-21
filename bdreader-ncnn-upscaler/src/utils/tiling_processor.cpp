@@ -75,11 +75,8 @@ bool process_with_tiling(
             return false;
         }
 
-        // Step 4: Store original dimensions (before any padding from process_rgb)
-        const int original_width = source_image.width;
-        const int original_height = source_image.height;
-
-        // Allocate output RGB buffer (may be larger due to padding in tiles)
+        // Step 4: Allocate output RGB buffer at final dimensions
+        // Each tile's upscaled result will be cropped of its padding before being blended in.
         const int output_width = source_image.width * config.scale_factor;
         const int output_height = source_image.height * config.scale_factor;
         std::vector<uint8_t> output_rgb(output_width * output_height * 3, 0);
@@ -210,49 +207,14 @@ bool process_with_tiling(
             }
         }
 
-        // Step 6: Crop padding from final output
-        // Each tile was processed with padding (18px) which is now upscaled
-        // We need to crop to original dimensions × scale_factor
-        const int desired_width = original_width * config.scale_factor;
-        const int desired_height = original_height * config.scale_factor;
-        const bool needs_crop = (output_width > desired_width || output_height > desired_height);
-
-        std::vector<uint8_t> final_pixels;
-        int final_width = output_width;
-        int final_height = output_height;
-
-        if (needs_crop) {
-            // Padding was added by process_rgb (18px * scale_factor)
-            const int pad_pixels = image_padding::kDefaultUpscalerPadding * config.scale_factor;
-
-            final_width = desired_width;
-            final_height = desired_height;
-            final_pixels.resize(final_width * final_height * 3);
-
-            const int max_offset_x = std::max(0, output_width - final_width);
-            const int max_offset_y = std::max(0, output_height - final_height);
-            const int start_x = std::min(pad_pixels, max_offset_x);
-            const int start_y = std::min(pad_pixels, max_offset_y);
-
-            logger::info("Tiling: cropping from " + std::to_string(output_width) + "x" + std::to_string(output_height) +
-                        " to " + std::to_string(final_width) + "x" + std::to_string(final_height) +
-                        " (removing " + std::to_string(pad_pixels) + "px padding)");
-
-            for (int row = 0; row < final_height; ++row) {
-                const uint8_t* src_row = output_rgb.data() + ((start_y + row) * output_width + start_x) * 3;
-                uint8_t* dst_row = final_pixels.data() + row * final_width * 3;
-                std::memcpy(dst_row, src_row, final_width * 3);
-            }
-        } else {
-            final_pixels = std::move(output_rgb);
-        }
-
-        // Step 7: Compress final output
+        // Step 6: Encode final output
+        // output_rgb is already sized to original_width * scale × original_height * scale,
+        // per-tile cropping has already removed the padding from each tile's contribution.
         image_io::ImagePixels final_output;
-        final_output.width = final_width;
-        final_output.height = final_height;
+        final_output.width = output_width;
+        final_output.height = output_height;
         final_output.channels = 3;
-        final_output.pixels = std::move(final_pixels);
+        final_output.pixels = std::move(output_rgb);
 
         if (!image_io::encode_image(final_output, output_format, output_data)) {
             logger::error("Tiling: failed to encode final output");

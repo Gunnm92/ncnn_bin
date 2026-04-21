@@ -79,6 +79,19 @@ bool parse_options(int argc, char** argv, Options& opts) {
         opts.profiling = result["profiling"].as<bool>();
         opts.verbose = result["verbose"].as<bool>();
 
+        if (opts.scale <= 0) {
+            std::cerr << "Invalid arguments: --scale must be > 0 (got " << opts.scale << ")\n";
+            return false;
+        }
+        if (opts.tile_size < 0) {
+            std::cerr << "Invalid arguments: --tile-size must be >= 0 (got " << opts.tile_size << ")\n";
+            return false;
+        }
+        if (opts.max_batch_items <= 0) {
+            std::cerr << "Invalid arguments: --max-batch-items must be > 0 (got " << opts.max_batch_items << ")\n";
+            return false;
+        }
+
         return true;
     } catch (const cxxopts::exceptions::exception& ex) {
         std::cerr << "Invalid arguments: " << ex.what() << "\n";

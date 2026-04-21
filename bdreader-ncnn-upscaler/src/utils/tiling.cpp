@@ -97,24 +97,17 @@ bool blend_tile(
     // Note: tile.output_x and tile.output_y ALREADY exclude the overlap
     // for non-border tiles (see calculate_tiles). So we copy the ENTIRE
     // upscaled tile to avoid gaps.
+    const int copy_width = std::max(0, std::min(tile_width, output_width - tile.output_x));
+    const int max_rows = std::max(0, std::min(tile_height, output_height - tile.output_y));
+    if (copy_width == 0 || max_rows == 0) {
+        return true;
+    }
 
-    // Copy entire tile to output with bounds checking
-    for (int y = 0; y < tile_height; ++y) {
-        const int output_y = tile.output_y + y;
-        if (output_y >= output_height) break;
-
-        for (int x = 0; x < tile_width; ++x) {
-            const int output_x = tile.output_x + x;
-            if (output_x >= output_width) break;
-
-            const int tile_offset = (y * tile_width + x) * 3;
-            const int output_offset = (output_y * output_width + output_x) * 3;
-
-            // Direct copy - overlap is handled by output position calculation
-            output_rgb[output_offset + 0] = tile_rgb[tile_offset + 0]; // R
-            output_rgb[output_offset + 1] = tile_rgb[tile_offset + 1]; // G
-            output_rgb[output_offset + 2] = tile_rgb[tile_offset + 2]; // B
-        }
+    const size_t row_bytes = static_cast<size_t>(copy_width) * 3;
+    for (int y = 0; y < max_rows; ++y) {
+        const uint8_t* src_row = tile_rgb + static_cast<size_t>(y) * tile_width * 3;
+        uint8_t* dst_row = output_rgb + (static_cast<size_t>(tile.output_y + y) * output_width + tile.output_x) * 3;
+        std::memcpy(dst_row, src_row, row_bytes);
     }
 
     return true;

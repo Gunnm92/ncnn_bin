@@ -154,27 +154,26 @@ bool encode_image(const ImagePixels& img, const std::string& format, std::vector
     std::string fmt = format.empty() ? "webp" : format;
     std::transform(fmt.begin(), fmt.end(), fmt.begin(), [](unsigned char c) { return std::tolower(c); });
 
-    if (fmt == "webp") {
-        // WebP hard limit: VP8 stores frame dimensions on 14 bits → max 16383 (WEBP_MAX_DIMENSION)
-        if (img.width > WEBP_MAX_DIMENSION || img.height > WEBP_MAX_DIMENSION) {
-            std::fprintf(stderr, "[WARN] Image %dx%d exceeds WebP max dimension (%d); falling back to PNG\n",
-                         img.width, img.height, WEBP_MAX_DIMENSION);
-            fmt = "png";
-            goto encode_png;
-        }
+    // WebP hard limit: VP8 stores frame dimensions on 14 bits → max 16383 (WEBP_MAX_DIMENSION).
+    // Fall back to PNG when the image cannot fit in a WebP container.
+    if (fmt == "webp" && (img.width > WEBP_MAX_DIMENSION || img.height > WEBP_MAX_DIMENSION)) {
+        std::fprintf(stderr, "[WARN] Image %dx%d exceeds WebP max dimension (%d); falling back to PNG\n",
+                     img.width, img.height, WEBP_MAX_DIMENSION);
+        fmt = "png";
+    }
 
+    if (fmt == "webp") {
         WebPConfig config;
         if (!WebPConfigInit(&config)) {
             return false;
         }
         config.quality = quality;
 
-        // Use RAII wrappers - automatically cleaned up even if exception occurs
         WebPPictureRAII pic_raii;
         if (!pic_raii.is_initialized()) {
             return false;
         }
-        
+
         WebPPicture* pic = pic_raii.get();
         pic->width = img.width;
         pic->height = img.height;
@@ -193,12 +192,9 @@ bool encode_image(const ImagePixels& img, const std::string& format, std::vector
             WebPMemoryWriter* writer = writer_raii.get();
             out.assign(writer->mem, writer->mem + writer->size);
         }
-        
-        // RAII destructors automatically call WebPMemoryWriterClear and WebPPictureFree
         return ok;
     }
 
-    encode_png:
     if (fmt == "png") {
         return stbi_write_png_to_func(write_callback, &out, img.width, img.height, img.channels, img.pixels.data(), img.width * img.channels) != 0;
     }

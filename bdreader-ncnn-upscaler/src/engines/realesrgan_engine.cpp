@@ -316,20 +316,11 @@ bool RealESRGANEngine::process_batch(const std::vector<ImageBuffer>& inputs,
     for (const auto& input : inputs) {
         ImageBuffer result{};
 
-        // Utilise le chemin process_single (tiling + reconstruction) pour chaque image.
         std::vector<uint8_t> compressed;
         if (!process_single(input.data.data(), input.data.size(), compressed, output_format)) {
             logger::warn("RealESRGAN batch: inference failed");
             outputs.push_back(result);
             continue;
-        }
-
-        // Décode pour récupérer les dimensions finales (optionnel mais utile pour le tracking).
-        image_io::ImagePixels decoded_out;
-        if (image_io::decode_image(compressed.data(), compressed.size(), decoded_out)) {
-            result.width = decoded_out.width;
-            result.height = decoded_out.height;
-            result.channels = decoded_out.channels;
         }
 
         result.data = std::move(compressed);

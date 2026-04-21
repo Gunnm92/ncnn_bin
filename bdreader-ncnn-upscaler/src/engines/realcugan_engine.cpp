@@ -260,20 +260,11 @@ bool RealCUGANEngine::process_batch(const std::vector<ImageBuffer>& inputs,
     for (const auto& input : inputs) {
         ImageBuffer result{};
 
-        // Utilise le même chemin que process_single (tiling + reconstruction).
         std::vector<uint8_t> compressed;
         if (!process_single(input.data.data(), input.data.size(), compressed, output_format)) {
             logger::warn("RealCUGAN batch: inference failed");
             outputs.push_back(result);
             continue;
-        }
-
-        // Récupère largeur/hauteur via un décodage léger du résultat.
-        image_io::ImagePixels decoded_out;
-        if (image_io::decode_image(compressed.data(), compressed.size(), decoded_out)) {
-            result.width = decoded_out.width;
-            result.height = decoded_out.height;
-            result.channels = decoded_out.channels;
         }
 
         result.data = std::move(compressed);
@@ -354,7 +345,10 @@ bool RealCUGANEngine::process_rgb(const uint8_t* rgb_data, int width, int height
 }
 
 int RealCUGANEngine::get_scale_factor() const {
-    return current_options_.scale;
+    // RealCUGAN up2x-* models are hard-coded to 2x upscaling.
+    // Ignoring opts.scale prevents tiling from allocating an oversized output
+    // buffer (e.g. 4x) that the model cannot fill.
+    return 2;
 }
 
 tiling::TilingConfig RealCUGANEngine::get_tiling_config() const {
