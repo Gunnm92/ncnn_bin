@@ -339,6 +339,20 @@ bool RealESRGANEngine::process_batch(const std::vector<ImageBuffer>& inputs,
     return true;
 }
 
+void RealESRGANEngine::clear_allocators() {
+#if NCNN_VULKAN
+    if (use_vulkan_) {
+        if (blob_vkallocator_)    blob_vkallocator_->clear();
+        if (staging_vkallocator_) staging_vkallocator_->clear();
+    } else {
+#endif
+        cpu_blob_allocator_.clear();
+        cpu_workspace_allocator_.clear();
+#if NCNN_VULKAN
+    }
+#endif
+}
+
 void RealESRGANEngine::cleanup() {
     // Guard against double cleanup (idempotent cleanup pattern)
     // If model_root_ is empty, cleanup has already been called

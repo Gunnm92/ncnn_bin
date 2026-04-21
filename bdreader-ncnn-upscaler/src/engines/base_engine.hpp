@@ -31,6 +31,10 @@ public:
         std::vector<ImageBuffer>& outputs, const std::string& output_format) = 0;
     virtual void cleanup() = 0;
 
+    /// Clear Vulkan allocator free-pools between requests (keep-alive mode).
+    /// Prevents GPU memory fragmentation from accumulating across images.
+    virtual void clear_allocators() {}
+
     /// Get tiling configuration (can be overridden per engine)
     virtual tiling::TilingConfig get_tiling_config() const {
         tiling::TilingConfig config;

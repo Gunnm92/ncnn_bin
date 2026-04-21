@@ -18,6 +18,7 @@ public:
     bool process_batch(const std::vector<ImageBuffer>& inputs,
         std::vector<ImageBuffer>& outputs, const std::string& output_format) override;
     void cleanup() override;
+    void clear_allocators() override;
     tiling::TilingConfig get_tiling_config() const override;
 
     /// Process RGB buffer directly (for tiling support)

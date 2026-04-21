@@ -622,6 +622,11 @@ int run_keep_alive_protocol_v2(BaseEngine* engine, const Options& opts) {
         }
 
         write_protocol_response(std::cout, header.request_id, ProtocolStatus::Ok, "", outputs);
+
+        // Clear Vulkan allocator free-pools after each request to prevent GPU memory
+        // fragmentation from accumulating across images (keep-alive mode).
+        engine->clear_allocators();
+
         record_outcome(header.request_id,
                        ProtocolStatus::Ok,
                        "",
